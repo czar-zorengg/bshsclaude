@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>My Reports — BSHS Lost and Found Hub</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div id="nav-container"></div>
+</header>
+
+<main>
+  <h1 class="section-title mt-0">My Reports</h1>
+  <p class="section-sub">Reports you've submitted, and their current status.</p>
+
+  <div id="reports-wrap">
+    <p class="loading-text">Loading your reports…</p>
+  </div>
+</main>
+
+<footer class="site-footer">&copy; <span id="year"></span> BSHS Lost and Found Hub.</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase.js"></script>
+<script src="app.js"></script>
+<script>
+async function init() {
+  const auth = await requireStudentLogin();
+  if (!auth) return;
+
+  const { data, error } = await supabaseClient
+    .from("reports")
+    .select("id, report_type, item_name, category, location, item_date, status, created_at")
+    .eq("student_id", auth.session.user.id)
+    .order("created_at", { ascending: false });
+
+  const wrap = document.getElementById("reports-wrap");
+
+  if (error) {
+    console.error("SUPABASE MY REPORTS ERROR:", error);
+    wrap.innerHTML = `<p class="loading-text">Could not load your reports right now.</p>`;
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    wrap.innerHTML = `<div class="empty-state">You haven't submitted any reports yet. <a href="report.html">Report an item</a>.</div>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Item</th><th>Type</th><th>Category</th><th>Location</th><th>Date</th><th>Status</th><th>Submitted</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.map(r => `
+            <tr>
+              <td>${esc(r.item_name)}</td>
+              <td>${esc(r.report_type)}</td>
+              <td>${esc(r.category)}</td>
+              <td>${esc(r.location)}</td>
+              <td>${formatDate(r.item_date)}</td>
+              <td><span class="${statusClass(r.status)}">${esc(r.status)}</span></td>
+              <td>${formatDate(r.created_at)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+document.getElementById("year").textContent = new Date().getFullYear();
+renderNav("my-reports.html");
+init();
+</script>
+</body>
+</html>

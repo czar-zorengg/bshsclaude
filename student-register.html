@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Create Account — BSHS Lost and Found Hub</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div id="nav-container"></div>
+</header>
+
+<main class="narrow">
+  <h1 class="section-title mt-0 text-center">Create Student Account</h1>
+  <p class="section-sub text-center">Register to report lost/found items and track your claims.</p>
+
+  <div class="card">
+    <form id="register-form">
+      <div class="form-row">
+        <label for="full-name">Full Name</label>
+        <input type="text" id="full-name" required maxlength="120" />
+      </div>
+      <div class="form-row">
+        <label for="student-id">Student ID</label>
+        <input type="text" id="student-id" required maxlength="40" />
+      </div>
+      <div class="form-row">
+        <label for="email">Email</label>
+        <input type="email" id="email" required autocomplete="email" />
+      </div>
+      <div class="form-row">
+        <label for="password">Password</label>
+        <input type="password" id="password" required minlength="6" autocomplete="new-password" />
+        <span class="hint">At least 6 characters.</span>
+      </div>
+      <div class="form-row">
+        <label for="confirm-password">Confirm Password</label>
+        <input type="password" id="confirm-password" required minlength="6" autocomplete="new-password" />
+      </div>
+      <div id="register-message" class="form-message"></div>
+      <button type="submit" class="btn btn-primary btn-block" id="register-btn">Create Account</button>
+    </form>
+  </div>
+
+  <p class="form-footer-link">Already have an account? <a href="students-login.html">Login</a></p>
+</main>
+
+<footer class="site-footer">&copy; <span id="year"></span> BSHS Lost and Found Hub.</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase.js"></script>
+<script src="app.js"></script>
+<script>
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+document.getElementById("register-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msgEl = document.getElementById("register-message");
+  const btn = document.getElementById("register-btn");
+
+  const fullName = document.getElementById("full-name").value.trim();
+  const studentId = document.getElementById("student-id").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  const confirmPassword = document.getElementById("confirm-password").value;
+
+  if (!fullName || !studentId || !email || !password || !confirmPassword) {
+    showMessage(msgEl, "Please fill in every field.", "error");
+    return;
+  }
+  if (!isValidEmail(email)) {
+    showMessage(msgEl, "Please enter a valid email address.", "error");
+    return;
+  }
+  if (password.length < 6) {
+    showMessage(msgEl, "Password must be at least 6 characters.", "error");
+    return;
+  }
+  if (password !== confirmPassword) {
+    showMessage(msgEl, "Passwords do not match.", "error");
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Creating account…";
+
+  const { data, error } = await supabaseClient.auth.signUp({ email, password });
+
+  if (error) {
+    console.error("SUPABASE SIGNUP ERROR:", error);
+    showMessage(msgEl, error.message, "error");
+    btn.disabled = false;
+    btn.textContent = "Create Account";
+    return;
+  }
+
+  // Save name/student ID temporarily on this device so the profile row
+  // can be completed as soon as we have an authenticated session
+  // (immediately, or on first login if email confirmation is required).
+  localStorage.setItem("bshs_pending_profile", JSON.stringify({ email, full_name: fullName, student_id: studentId }));
+
+  if (data.session && data.user) {
+    // Email confirmation is off — we already have a session, create the profile now.
+    const { error: profileError } = await supabaseClient.from("users").insert([{
+      id: data.user.id,
+      email,
+      full_name: fullName,
+      student_id: studentId,
+      role: "student"
+    }]);
+
+    if (profileError) {
+      console.error("SUPABASE PROFILE INSERT ERROR:", profileError);
+      showMessage(msgEl, "Account created, but profile setup failed: " + profileError.message, "error");
+      btn.disabled = false;
+      btn.textContent = "Create Account";
+      return;
+    }
+
+    localStorage.removeItem("bshs_pending_profile");
+    showMessage(msgEl, "Account created! Redirecting…", "success");
+    setTimeout(() => { window.location.href = "index.html"; }, 900);
+  } else {
+    showMessage(msgEl, "Account created! Check your email to confirm your account, then log in.", "success");
+    btn.disabled = false;
+    btn.textContent = "Create Account";
+  }
+});
+
+document.getElementById("year").textContent = new Date().getFullYear();
+renderNav("student-register.html");
+</script>
+</body>
+</html>

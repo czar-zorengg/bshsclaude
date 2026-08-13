@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Admin Login — BSHS Lost and Found Hub</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div id="nav-container"></div>
+</header>
+
+<main class="narrow">
+  <h1 class="section-title mt-0 text-center">Staff / Admin Login</h1>
+  <p class="section-sub text-center">For BSHS staff managing reports and claims.</p>
+
+  <div class="card">
+    <form id="admin-login-form">
+      <div class="form-row">
+        <label for="email">Email</label>
+        <input type="email" id="email" required autocomplete="email" />
+      </div>
+      <div class="form-row">
+        <label for="password">Password</label>
+        <input type="password" id="password" required autocomplete="current-password" />
+      </div>
+      <div id="admin-login-message" class="form-message"></div>
+      <button type="submit" class="btn btn-primary btn-block" id="admin-login-btn">Login</button>
+    </form>
+  </div>
+
+  <p class="form-footer-link"><a href="students-login.html">Student Login</a></p>
+</main>
+
+<footer class="site-footer">&copy; <span id="year"></span> BSHS Lost and Found Hub.</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase.js"></script>
+<script src="app.js"></script>
+<script>
+document.getElementById("admin-login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msgEl = document.getElementById("admin-login-message");
+  const btn = document.getElementById("admin-login-btn");
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+
+  btn.disabled = true;
+  btn.textContent = "Logging in…";
+
+  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    console.error("SUPABASE ADMIN LOGIN ERROR:", error);
+    showMessage(msgEl, error.message, "error");
+    btn.disabled = false;
+    btn.textContent = "Login";
+    return;
+  }
+
+  const profile = await getProfile(data.user.id);
+
+  if (!profile || profile.role !== "admin") {
+    showMessage(msgEl, "This account does not have admin access.", "error");
+    btn.disabled = false;
+    btn.textContent = "Login";
+    return;
+  }
+
+  showMessage(msgEl, "Welcome, admin! Redirecting…", "success");
+  setTimeout(() => { window.location.href = "admin-dashboard.html"; }, 700);
+});
+
+document.getElementById("year").textContent = new Date().getFullYear();
+renderNav("admin-login.html");
+</script>
+</body>
+</html>

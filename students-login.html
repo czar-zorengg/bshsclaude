@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Student Login — BSHS Lost and Found Hub</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div id="nav-container"></div>
+</header>
+
+<main class="narrow">
+  <h1 class="section-title mt-0 text-center">Student Login</h1>
+  <p class="section-sub text-center">Log in to report items, browse found items, and track your claims.</p>
+
+  <div class="card">
+    <form id="login-form">
+      <div class="form-row">
+        <label for="email">Email</label>
+        <input type="email" id="email" required autocomplete="email" />
+      </div>
+      <div class="form-row">
+        <label for="password">Password</label>
+        <input type="password" id="password" required autocomplete="current-password" />
+      </div>
+      <div id="login-message" class="form-message"></div>
+      <button type="submit" class="btn btn-primary btn-block" id="login-btn">Login</button>
+    </form>
+  </div>
+
+  <p class="form-footer-link">
+    Don't have an account? <a href="student-register.html">Create Account</a><br />
+    <a href="admin-login.html">Staff / Admin Login</a>
+  </p>
+</main>
+
+<footer class="site-footer">&copy; <span id="year"></span> BSHS Lost and Found Hub.</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase.js"></script>
+<script src="app.js"></script>
+<script>
+document.getElementById("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msgEl = document.getElementById("login-message");
+  const btn = document.getElementById("login-btn");
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+
+  btn.disabled = true;
+  btn.textContent = "Logging in…";
+
+  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    console.error("SUPABASE LOGIN ERROR:", error);
+    showMessage(msgEl, error.message, "error");
+    btn.disabled = false;
+    btn.textContent = "Login";
+    return;
+  }
+
+  await ensureProfile(data.user);
+  showMessage(msgEl, "Welcome back! Redirecting…", "success");
+  setTimeout(() => { window.location.href = "index.html"; }, 700);
+});
+
+document.getElementById("year").textContent = new Date().getFullYear();
+renderNav("students-login.html");
+
+// If already logged in, skip straight to home.
+getSession().then(session => { if (session) window.location.href = "index.html"; });
+</script>
+</body>
+</html>

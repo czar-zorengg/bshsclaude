@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Items — BSHS Lost and Found Hub</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div id="nav-container"></div>
+</header>
+
+<main>
+  <h1 class="section-title mt-0">Found Items</h1>
+  <p class="section-sub">Browse items that have been found and approved by school staff. If one is yours, request a claim.</p>
+
+  <div class="filters">
+    <input type="text" id="search-input" placeholder="Search by item name or location…" />
+    <select id="category-filter"><option value="">All Categories</option></select>
+  </div>
+
+  <div id="items-grid" class="grid">
+    <p class="loading-text">Loading found items…</p>
+  </div>
+</main>
+
+<footer class="site-footer">&copy; <span id="year"></span> BSHS Lost and Found Hub.</footer>
+
+<!-- Claim Request Modal -->
+<div class="modal-overlay" id="claim-modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Request Claim</h3>
+      <button class="modal-close" id="claim-modal-close" aria-label="Close">&times;</button>
+    </div>
+    <p id="claim-item-name" style="font-weight:700; color:var(--primary-dark);"></p>
+    <form id="claim-form">
+      <div class="form-row">
+        <label for="claim-name">Your Name</label>
+        <input type="text" id="claim-name" disabled />
+      </div>
+      <div class="form-row">
+        <label for="claim-student-id">Student ID</label>
+        <input type="text" id="claim-student-id" disabled />
+      </div>
+      <div class="form-row">
+        <label for="claim-message">Message / Proof of Ownership *</label>
+        <textarea id="claim-message" required placeholder="Describe identifying details that prove this item is yours (e.g. contents, marks, serial number)…"></textarea>
+      </div>
+      <div id="claim-form-message" class="form-message"></div>
+      <button type="submit" class="btn btn-primary btn-block" id="claim-submit-btn">Submit Claim Request</button>
+    </form>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase.js"></script>
+<script src="app.js"></script>
+<script>
+let allItems = [];
+let activeReportId = null;
+
+async function loadItems() {
+  const wrap = document.getElementById("items-grid");
+  const { data, error } = await supabaseClient
+    .from("reports")
+    .select("id, item_name, category, location, item_date, description, photo_url, status")
+    .eq("status", "Approved")
+    .eq("report_type", "Found Item")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("SUPABASE ITEMS ERROR:", error);
+    wrap.innerHTML = `<p class="loading-text">Could not load items right now.</p>`;
+    return;
+  }
+
+  allItems = data || [];
+  renderItems(allItems);
+}
+
+function renderItems(items) {
+  const wrap = document.getElementById("items-grid");
+  if (!items.length) {
+    wrap.innerHTML = `<div class="empty-state">No matching found items right now.</div>`;
+    return;
+  }
+  wrap.innerHTML = items.map(item => `
+    <div class="item-card">
+      ${item.photo_url
+        ? `<img class="item-photo" src="${esc(item.photo_url)}" alt="${esc(item.item_name)}" />`
+        : `<div class="item-photo-placeholder">No photo</div>`}
+      <div class="item-body">
+        <h3>${esc(item.item_name)}</h3>
+        <div class="item-meta"><strong>Category:</strong> ${esc(item.category)}</div>
+        <div class="item-meta"><strong>Found at:</strong> ${esc(item.location)}</div>
+        <div class="item-meta"><strong>Date:</strong> ${formatDate(item.item_date)}</div>
+        <p class="item-desc">${esc(item.description)}</p>
+        <span class="${statusClass(item.status)}">${esc(item.status)}</span>
+        <div class="item-actions">
+          <button class="btn btn-primary btn-block btn-sm claim-btn" data-id="${item.id}" data-name="${esc(item.item_name)}">Request Claim</button>
+        </div>
+      </div>
+    </div>
+  `).join("");
+
+  document.querySelectorAll(".claim-btn").forEach(btn => {
+    btn.addEventListener("click", () => openClaimModal(btn.dataset.id, btn.dataset.name));
+  });
+}
+
+function applyFilters() {
+  const q = document.getElementById("search-input").value.trim().toLowerCase();
+  const cat = document.getElementById("category-filter").value;
+  const filtered = allItems.filter(item => {
+    const matchesQ = !q || item.item_name.toLowerCase().includes(q) || item.location.toLowerCase().includes(q);
+    const matchesCat = !cat || item.category === cat;
+    return matchesQ && matchesCat;
+  });
+  renderItems(filtered);
+}
+
+async function openClaimModal(reportId, itemName) {
+  const session = await getSession();
+  if (!session) {
+    window.location.href = "students-login.html";
+    return;
+  }
+  const profile = await ensureProfile(session.user);
+  activeReportId = reportId;
+  document.getElementById("claim-item-name").textContent = "Item: " + itemName;
+  document.getElementById("claim-name").value = profile?.full_name || session.user.email;
+  document.getElementById("claim-student-id").value = profile?.student_id || "—";
+  document.getElementById("claim-message").value = "";
+  document.getElementById("claim-form-message").style.display = "none";
+  document.getElementById("claim-modal-overlay").classList.add("open");
+}
+
+function closeClaimModal() {
+  document.getElementById("claim-modal-overlay").classList.remove("open");
+  activeReportId = null;
+}
+
+document.getElementById("claim-modal-close").addEventListener("click", closeClaimModal);
+document.getElementById("claim-modal-overlay").addEventListener("click", (e) => {
+  if (e.target.id === "claim-modal-overlay") closeClaimModal();
+});
+
+document.getElementById("claim-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msgEl = document.getElementById("claim-form-message");
+  const btn = document.getElementById("claim-submit-btn");
+  const message = document.getElementById("claim-message").value.trim();
+
+  if (!message) {
+    showMessage(msgEl, "Please describe why this item is yours.", "error");
+    return;
+  }
+
+  const session = await getSession();
+  if (!session) {
+    window.location.href = "students-login.html";
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Submitting…";
+
+  const { error } = await supabaseClient.from("claim_requests").insert([{
+    student_id: session.user.id,
+    report_id: activeReportId,
+    message
+  }]);
+
+  btn.disabled = false;
+  btn.textContent = "Submit Claim Request";
+
+  if (error) {
+    console.error("SUPABASE CLAIM ERROR:", error);
+    showMessage(msgEl, "Unable to submit claim: " + error.message, "error");
+    return;
+  }
+
+  showMessage(msgEl, "Claim request submitted! Redirecting…", "success");
+  setTimeout(() => { window.location.href = "claim-requests.html"; }, 1200);
+});
+
+document.getElementById("search-input").addEventListener("input", applyFilters);
+document.getElementById("category-filter").addEventListener("change", applyFilters);
+
+const catSelect = document.getElementById("category-filter");
+CATEGORIES.forEach(c => {
+  const opt = document.createElement("option");
+  opt.value = c;
+  opt.textContent = c;
+  catSelect.appendChild(opt);
+});
+
+document.getElementById("year").textContent = new Date().getFullYear();
+renderNav("items.html");
+loadItems();
+</script>
+</body>
+</html>

@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Admin Dashboard — BSHS Lost and Found Hub</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div id="nav-container"></div>
+</header>
+
+<main>
+  <h1 class="section-title mt-0">Admin Dashboard</h1>
+  <p class="section-sub">Manage reports, claim requests, and user accounts.</p>
+
+  <div class="stats-grid" id="stats-grid">
+    <div class="stat-card"><div class="stat-value" id="stat-total">—</div><div class="stat-label">Total Reports</div></div>
+    <div class="stat-card"><div class="stat-value" id="stat-pending">—</div><div class="stat-label">Pending Reports</div></div>
+    <div class="stat-card"><div class="stat-value" id="stat-found">—</div><div class="stat-label">Approved Found Items</div></div>
+    <div class="stat-card"><div class="stat-value" id="stat-claims">—</div><div class="stat-label">Pending Claim Requests</div></div>
+    <div class="stat-card"><div class="stat-value" id="stat-claimed">—</div><div class="stat-label">Claimed Items</div></div>
+  </div>
+
+  <div class="section">
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="reports">Reports</button>
+      <button class="tab-btn" data-tab="claims">Claim Requests</button>
+      <button class="tab-btn" data-tab="users">Users</button>
+    </div>
+
+    <!-- REPORTS TAB -->
+    <div class="tab-panel active" id="tab-reports">
+      <div class="filters">
+        <select id="report-status-filter">
+          <option value="">All Statuses</option>
+          <option value="Pending">Pending</option>
+          <option value="Approved">Approved</option>
+          <option value="Rejected">Rejected</option>
+          <option value="Claimed">Claimed</option>
+          <option value="Resolved">Resolved</option>
+        </select>
+        <select id="report-type-filter">
+          <option value="">All Types</option>
+          <option value="Lost Item">Lost Item</option>
+          <option value="Found Item">Found Item</option>
+        </select>
+      </div>
+      <div id="reports-wrap"><p class="loading-text">Loading reports…</p></div>
+    </div>
+
+    <!-- CLAIMS TAB -->
+    <div class="tab-panel" id="tab-claims">
+      <div class="filters">
+        <select id="claim-status-filter">
+          <option value="">All Statuses</option>
+          <option value="Pending">Pending</option>
+          <option value="Approved">Approved</option>
+          <option value="Rejected">Rejected</option>
+          <option value="Completed">Completed</option>
+        </select>
+      </div>
+      <div id="claims-wrap"><p class="loading-text">Loading claim requests…</p></div>
+    </div>
+
+    <!-- USERS TAB -->
+    <div class="tab-panel" id="tab-users">
+      <div id="users-wrap"><p class="loading-text">Loading users…</p></div>
+    </div>
+  </div>
+</main>
+
+<footer class="site-footer">&copy; <span id="year"></span> BSHS Lost and Found Hub.</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase.js"></script>
+<script src="app.js"></script>
+<script>
+let currentAdminId = null;
+let allReports = [];
+let allClaims = [];
+
+/* ---------- tabs ---------- */
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+  });
+});
+
+/* ---------- stats ---------- */
+async function loadStats() {
+  const { data, error } = await supabaseClient.rpc("get_public_stats");
+  if (error) { console.error("SUPABASE STATS ERROR:", error); return; }
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return;
+  document.getElementById("stat-total").textContent = row.total_reports ?? 0;
+  document.getElementById("stat-found").textContent = row.found_items ?? 0;
+  document.getElementById("stat-pending").textContent = row.pending_reports ?? 0;
+  document.getElementById("stat-claimed").textContent = row.claimed_items ?? 0;
+
+  const { count } = await supabaseClient
+    .from("claim_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "Pending");
+  document.getElementById("stat-claims").textContent = count ?? 0;
+}
+
+/* ---------- reports tab ---------- */
+async function loadReports() {
+  const wrap = document.getElementById("reports-wrap");
+  const { data, error } = await supabaseClient
+    .from("reports")
+    .select("id, report_type, item_name, category, location, item_date, description, photo_url, status, created_at, student_id")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("SUPABASE ADMIN REPORTS ERROR:", error);
+    wrap.innerHTML = `<p class="loading-text">Could not load reports.</p>`;
+    return;
+  }
+  allReports = data || [];
+  renderReports();
+}
+
+function renderReports() {
+  const wrap = document.getElementById("reports-wrap");
+  const statusFilter = document.getElementById("report-status-filter").value;
+  const typeFilter = document.getElementById("report-type-filter").value;
+
+  const filtered = allReports.filter(r =>
+    (!statusFilter || r.status === statusFilter) &&
+    (!typeFilter || r.report_type === typeFilter)
+  );
+
+  if (!filtered.length) {
+    wrap.innerHTML = `<div class="empty-state">No reports match these filters.</div>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Item</th><th>Type</th><th>Category</th><th>Location</th><th>Date</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          ${filtered.map(r => `
+            <tr>
+              <td>${esc(r.item_name)}</td>
+              <td>${esc(r.report_type)}</td>
+              <td>${esc(r.category)}</td>
+              <td>${esc(r.location)}</td>
+              <td>${formatDate(r.item_date)}</td>
+              <td><span class="${statusClass(r.status)}">${esc(r.status)}</span></td>
+              <td>
+                <div class="row-actions">
+                  <select class="status-select" data-id="${r.id}">
+                    ${["Pending","Approved","Rejected","Claimed","Resolved"].map(s =>
+                      `<option value="${s}" ${s === r.status ? "selected" : ""}>${s}</option>`
+                    ).join("")}
+                  </select>
+                  <button class="btn btn-sm btn-primary save-report-status" data-id="${r.id}">Save</button>
+                </div>
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  document.querySelectorAll(".save-report-status").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      const select = document.querySelector(`.status-select[data-id="${id}"]`);
+      const newStatus = select.value;
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+
+      const { error } = await supabaseClient
+        .from("reports")
+        .update({ status: newStatus })
+        .eq("id", id);
+
+      if (error) {
+        console.error("SUPABASE UPDATE REPORT ERROR:", error);
+        alert("Unable to update report: " + error.message);
+        btn.disabled = false;
+        btn.textContent = "Save";
+        return;
+      }
+
+      await loadReports();
+      await loadStats();
+    });
+  });
+}
+
+document.getElementById("report-status-filter").addEventListener("change", renderReports);
+document.getElementById("report-type-filter").addEventListener("change", renderReports);
+
+/* ---------- claims tab ---------- */
+async function loadClaims() {
+  const wrap = document.getElementById("claims-wrap");
+  const { data, error } = await supabaseClient
+    .from("claim_requests")
+    .select("id, message, status, created_at, student_id, report_id, users ( full_name, student_id ), reports ( item_name, item_date, location )")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("SUPABASE ADMIN CLAIMS ERROR:", error);
+    wrap.innerHTML = `<p class="loading-text">Could not load claim requests.</p>`;
+    return;
+  }
+  allClaims = data || [];
+  renderClaims();
+}
+
+function renderClaims() {
+  const wrap = document.getElementById("claims-wrap");
+  const statusFilter = document.getElementById("claim-status-filter").value;
+  const filtered = allClaims.filter(c => !statusFilter || c.status === statusFilter);
+
+  if (!filtered.length) {
+    wrap.innerHTML = `<div class="empty-state">No claim requests match this filter.</div>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Student</th><th>Student ID</th><th>Item</th><th>Message</th><th>Date</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          ${filtered.map(c => `
+            <tr>
+              <td>${esc(c.users?.full_name || "—")}</td>
+              <td>${esc(c.users?.student_id || "—")}</td>
+              <td>${esc(c.reports?.item_name || "—")}</td>
+              <td style="max-width:220px;">${esc(c.message || "—")}</td>
+              <td>${formatDate(c.created_at)}</td>
+              <td><span class="${statusClass(c.status)}">${esc(c.status)}</span></td>
+              <td>
+                <div class="row-actions">
+                  ${c.status === "Pending" ? `
+                    <button class="btn btn-sm btn-success approve-claim" data-id="${c.id}">Approve</button>
+                    <button class="btn btn-sm btn-danger reject-claim" data-id="${c.id}">Reject</button>
+                  ` : `<span class="hint">No actions</span>`}
+                </div>
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  document.querySelectorAll(".approve-claim").forEach(btn => {
+    btn.addEventListener("click", () => updateClaimStatus(btn.dataset.id, "Approved", btn));
+  });
+  document.querySelectorAll(".reject-claim").forEach(btn => {
+    btn.addEventListener("click", () => updateClaimStatus(btn.dataset.id, "Rejected", btn));
+  });
+}
+
+async function updateClaimStatus(id, status, btn) {
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+
+  // Updating claim_requests.status to "Approved" automatically marks the
+  // related report as "Claimed" via a database trigger (see schema.sql).
+  const { error } = await supabaseClient
+    .from("claim_requests")
+    .update({ status })
+    .eq("id", id);
+
+  if (error) {
+    console.error("SUPABASE UPDATE CLAIM ERROR:", error);
+    alert("Unable to update claim: " + error.message);
+    btn.disabled = false;
+    btn.textContent = status === "Approved" ? "Approve" : "Reject";
+    return;
+  }
+
+  await loadClaims();
+  await loadReports();
+  await loadStats();
+}
+
+document.getElementById("claim-status-filter").addEventListener("change", renderClaims);
+
+/* ---------- users tab ---------- */
+async function loadUsers() {
+  const wrap = document.getElementById("users-wrap");
+  const { data, error } = await supabaseClient
+    .from("users")
+    .select("id, full_name, student_id, email, role, created_at")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("SUPABASE ADMIN USERS ERROR:", error);
+    wrap.innerHTML = `<p class="loading-text">Could not load users.</p>`;
+    return;
+  }
+
+  if (!data || !data.length) {
+    wrap.innerHTML = `<div class="empty-state">No users found.</div>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Student ID</th><th>Email</th><th>Role</th><th>Joined</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${data.map(u => `
+            <tr>
+              <td>${esc(u.full_name)}</td>
+              <td>${esc(u.student_id || "—")}</td>
+              <td>${esc(u.email)}</td>
+              <td><span class="${u.role === "admin" ? "badge badge-claimed" : "badge badge-approved"}">${esc(u.role)}</span></td>
+              <td>${formatDate(u.created_at)}</td>
+              <td>
+                ${u.id === currentAdminId
+                  ? `<span class="hint">This is you</span>`
+                  : `<button class="btn btn-sm btn-outline toggle-role" data-id="${u.id}" data-role="${u.role}">
+                       ${u.role === "admin" ? "Remove Admin" : "Make Admin"}
+                     </button>`}
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  document.querySelectorAll(".toggle-role").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      const newRole = btn.dataset.role === "admin" ? "student" : "admin";
+      if (!confirm(`Change this user's role to "${newRole}"?`)) return;
+
+      btn.disabled = true;
+      const { error } = await supabaseClient.from("users").update({ role: newRole }).eq("id", id);
+
+      if (error) {
+        console.error("SUPABASE UPDATE ROLE ERROR:", error);
+        alert("Unable to update role: " + error.message);
+        btn.disabled = false;
+        return;
+      }
+      await loadUsers();
+    });
+  });
+}
+
+/* ---------- init ---------- */
+async function init() {
+  const auth = await requireAdminLogin();
+  if (!auth) return;
+  currentAdminId = auth.session.user.id;
+
+  await Promise.all([loadStats(), loadReports(), loadClaims(), loadUsers()]);
+}
+
+document.getElementById("year").textContent = new Date().getFullYear();
+renderNav("admin-dashboard.html");
+init();
+</script>
+</body>
+</html>

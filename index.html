@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BSHS Lost and Found Hub</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div id="nav-container"></div>
+</header>
+
+<main>
+  <section class="hero">
+    <h1>BSHS LOST AND FOUND HUB</h1>
+    <p class="lead">A centralized platform for reporting, finding, and claiming lost items within the school.</p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="report.html?type=Lost%20Item">Report Lost Item</a>
+      <a class="btn btn-accent" href="report.html?type=Found%20Item">Report Found Item</a>
+      <a class="btn btn-outline" href="items.html">Browse Found Items</a>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section-title">How It Works</h2>
+    <p class="section-sub">Four simple steps to get a lost item back to its owner.</p>
+    <div class="how-grid">
+      <div class="how-step">
+        <div class="num">1</div>
+        <h3>Report</h3>
+        <p>Lost something, or found something? Submit a quick report with details and an optional photo.</p>
+      </div>
+      <div class="how-step">
+        <div class="num">2</div>
+        <h3>Review</h3>
+        <p>School staff review the report and approve found items so they appear publicly.</p>
+      </div>
+      <div class="how-step">
+        <div class="num">3</div>
+        <h3>Browse &amp; Claim</h3>
+        <p>Students browse approved found items and submit a claim request with proof of ownership.</p>
+      </div>
+      <div class="how-step">
+        <div class="num">4</div>
+        <h3>Reunite</h3>
+        <p>Staff verify the claim and approve it — the item is marked returned to its owner.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section-title">Recently Found Items</h2>
+    <p class="section-sub">The latest approved found items waiting to be claimed.</p>
+    <div id="recent-items" class="grid">
+      <p class="loading-text">Loading recent items…</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section-title">Statistics</h2>
+    <p class="section-sub">A snapshot of activity across the whole system.</p>
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card"><div class="stat-value" id="stat-total">—</div><div class="stat-label">Total Reports</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-found">—</div><div class="stat-label">Found Items</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-pending">—</div><div class="stat-label">Pending Reports</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-claimed">—</div><div class="stat-label">Claimed Items</div></div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  &copy; <span id="year"></span> BSHS Lost and Found Hub. Built for a safer, more organized campus.
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase.js"></script>
+<script src="app.js"></script>
+<script>
+document.getElementById("year").textContent = new Date().getFullYear();
+
+async function loadRecentItems() {
+  const wrap = document.getElementById("recent-items");
+  const { data, error } = await supabaseClient
+    .from("reports")
+    .select("id, item_name, category, location, item_date, description, photo_url, status")
+    .eq("status", "Approved")
+    .eq("report_type", "Found Item")
+    .order("created_at", { ascending: false })
+    .limit(3);
+
+  if (error) {
+    console.error("SUPABASE RECENT ITEMS ERROR:", error);
+    wrap.innerHTML = `<p class="loading-text">Could not load items right now.</p>`;
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    wrap.innerHTML = `<div class="empty-state">No found items approved yet. Check back soon.</div>`;
+    return;
+  }
+
+  wrap.innerHTML = data.map(item => `
+    <div class="item-card">
+      ${item.photo_url
+        ? `<img class="item-photo" src="${esc(item.photo_url)}" alt="${esc(item.item_name)}" />`
+        : `<div class="item-photo-placeholder">No photo</div>`}
+      <div class="item-body">
+        <h3>${esc(item.item_name)}</h3>
+        <div class="item-meta"><strong>Category:</strong> ${esc(item.category)}</div>
+        <div class="item-meta"><strong>Found at:</strong> ${esc(item.location)}</div>
+        <div class="item-meta"><strong>Date:</strong> ${formatDate(item.item_date)}</div>
+        <span class="${statusClass(item.status)}">${esc(item.status)}</span>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function loadStats() {
+  const { data, error } = await supabaseClient.rpc("get_public_stats");
+  if (error) {
+    console.error("SUPABASE STATS ERROR:", error);
+    return;
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return;
+  document.getElementById("stat-total").textContent = row.total_reports ?? 0;
+  document.getElementById("stat-found").textContent = row.found_items ?? 0;
+  document.getElementById("stat-pending").textContent = row.pending_reports ?? 0;
+  document.getElementById("stat-claimed").textContent = row.claimed_items ?? 0;
+}
+
+renderNav("index.html");
+loadRecentItems();
+loadStats();
+</script>
+</body>
+</html>

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Report an Item — BSHS Lost and Found Hub</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div id="nav-container"></div>
+</header>
+
+<main class="narrow">
+  <h1 class="section-title mt-0">Report an Item</h1>
+  <p class="section-sub">Fill in as much detail as you can — it makes matching lost and found items much easier.</p>
+
+  <div class="card">
+    <form id="report-form">
+      <div class="form-row">
+        <label for="report-type">Report Type *</label>
+        <select id="report-type" required>
+          <option value="Lost Item">Lost Item</option>
+          <option value="Found Item">Found Item</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label for="item-name">Item Name *</label>
+        <input type="text" id="item-name" required maxlength="120" placeholder="e.g. Black Wallet" />
+      </div>
+
+      <div class="form-row">
+        <label for="category">Category *</label>
+        <select id="category" required></select>
+      </div>
+
+      <div class="form-row">
+        <label for="location">Location *</label>
+        <input type="text" id="location" required maxlength="120" placeholder="e.g. Canteen, Room 204, Gymnasium" />
+      </div>
+
+      <div class="form-row">
+        <label for="item-date">Date *</label>
+        <input type="date" id="item-date" required />
+      </div>
+
+      <div class="form-row">
+        <label for="description">Description *</label>
+        <textarea id="description" required maxlength="600" placeholder="Color, brand, contents, distinguishing marks…"></textarea>
+      </div>
+
+      <div class="form-row">
+        <label for="photo">Photo <span class="hint">(optional, JPEG/PNG/WebP, max 1.5 MB)</span></label>
+        <input type="file" id="photo" accept="image/jpeg,image/png,image/webp" />
+      </div>
+
+      <div id="report-form-message" class="form-message"></div>
+
+      <button type="submit" class="btn btn-primary btn-block" id="report-submit-btn">Submit Report</button>
+    </form>
+  </div>
+</main>
+
+<footer class="site-footer">&copy; <span id="year"></span> BSHS Lost and Found Hub.</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase.js"></script>
+<script src="app.js"></script>
+<script>
+let currentUser = null;
+
+async function init() {
+  const auth = await requireStudentLogin();
+  if (!auth) return; // redirected to login
+  currentUser = auth.session.user;
+
+  populateCategorySelect(document.getElementById("category"));
+
+  // Pre-select report type from a query string, e.g. report.html?type=Found%20Item
+  const params = new URLSearchParams(window.location.search);
+  const type = params.get("type");
+  if (type === "Lost Item" || type === "Found Item") {
+    document.getElementById("report-type").value = type;
+  }
+
+  // Default date to today, and disallow future dates.
+  const dateInput = document.getElementById("item-date");
+  const today = new Date().toISOString().slice(0, 10);
+  dateInput.max = today;
+  dateInput.value = today;
+}
+
+document.getElementById("report-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msgEl = document.getElementById("report-form-message");
+  const btn = document.getElementById("report-submit-btn");
+
+  const reportData = {
+    report_type: document.getElementById("report-type").value,
+    item_name: document.getElementById("item-name").value.trim(),
+    category: document.getElementById("category").value,
+    location: document.getElementById("location").value.trim(),
+    item_date: document.getElementById("item-date").value,
+    description: document.getElementById("description").value.trim()
+  };
+
+  if (!reportData.report_type || !reportData.item_name || !reportData.category ||
+      !reportData.location || !reportData.item_date || !reportData.description) {
+    showMessage(msgEl, "Please fill in every required field.", "error");
+    return;
+  }
+
+  const photoFile = document.getElementById("photo").files[0] || null;
+  const photoCheck = validatePhoto(photoFile);
+  if (!photoCheck.ok) {
+    showMessage(msgEl, photoCheck.error, "error");
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Submitting…";
+
+  try {
+    if (photoFile) {
+      reportData.photo_url = await uploadPhoto(photoFile, currentUser.id);
+    }
+
+    reportData.student_id = currentUser.id;
+
+    // IMPORTANT: no .select() after insert — the SELECT policy only
+    // grants read access to the student's OWN report by student_id,
+    // and chaining .select() here works fine only if the WITH CHECK
+    // succeeded, but we keep it plain and re-fetch on the next page
+    // instead, to avoid depending on select-after-insert behavior.
+    const { error } = await supabaseClient
+      .from("reports")
+      .insert([reportData]);
+
+    if (error) {
+      console.error("SUPABASE REPORT ERROR:", error);
+      showMessage(msgEl, "Unable to submit report: " + error.message, "error");
+      btn.disabled = false;
+      btn.textContent = "Submit Report";
+      return;
+    }
+
+    showMessage(msgEl, "Report submitted successfully! Redirecting…", "success");
+    setTimeout(() => { window.location.href = "my-reports.html"; }, 1200);
+  } catch (err) {
+    console.error("SUPABASE REPORT ERROR:", err);
+    showMessage(msgEl, err.message || "Something went wrong. Please try again.", "error");
+    btn.disabled = false;
+    btn.textContent = "Submit Report";
+  }
+});
+
+document.getElementById("year").textContent = new Date().getFullYear();
+renderNav("report.html");
+init();
+</script>
+</body>
+</html>

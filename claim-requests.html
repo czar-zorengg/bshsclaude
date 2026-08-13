@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>My Claim Requests — BSHS Lost and Found Hub</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div id="nav-container"></div>
+</header>
+
+<main>
+  <h1 class="section-title mt-0">My Claim Requests</h1>
+  <p class="section-sub">Claim requests you've submitted for found items, and their status.</p>
+
+  <div id="claims-wrap">
+    <p class="loading-text">Loading your claim requests…</p>
+  </div>
+</main>
+
+<footer class="site-footer">&copy; <span id="year"></span> BSHS Lost and Found Hub.</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase.js"></script>
+<script src="app.js"></script>
+<script>
+async function init() {
+  const auth = await requireStudentLogin();
+  if (!auth) return;
+
+  const { data, error } = await supabaseClient
+    .from("claim_requests")
+    .select("id, message, status, created_at, reports ( item_name, item_date, location )")
+    .eq("student_id", auth.session.user.id)
+    .order("created_at", { ascending: false });
+
+  const wrap = document.getElementById("claims-wrap");
+
+  if (error) {
+    console.error("SUPABASE MY CLAIMS ERROR:", error);
+    wrap.innerHTML = `<p class="loading-text">Could not load your claim requests right now.</p>`;
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    wrap.innerHTML = `<div class="empty-state">You haven't requested any claims yet. <a href="items.html">Browse found items</a>.</div>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Item</th><th>Date Found</th><th>Message</th><th>Status</th><th>Submitted</th></tr>
+        </thead>
+        <tbody>
+          ${data.map(c => `
+            <tr>
+              <td>${esc(c.reports?.item_name || "—")}</td>
+              <td>${c.reports?.item_date ? formatDate(c.reports.item_date) : "—"}</td>
+              <td>${esc(c.message || "—")}</td>
+              <td><span class="${statusClass(c.status)}">${esc(c.status)}</span></td>
+              <td>${formatDate(c.created_at)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+document.getElementById("year").textContent = new Date().getFullYear();
+renderNav("claim-requests.html");
+init();
+</script>
+</body>
+</html>
