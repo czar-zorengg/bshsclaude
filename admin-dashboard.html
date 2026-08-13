@@ -115,7 +115,7 @@ async function loadReports() {
   const wrap = document.getElementById("reports-wrap");
   const { data, error } = await supabaseClient
     .from("reports")
-    .select("id, report_type, item_name, category, location, item_date, description, photo_url, status, created_at, student_id")
+    .select("id, report_type, item_name, category, location, item_date, description, photo_url, status, created_at, student_id, guest_name, guest_contact")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -146,13 +146,16 @@ function renderReports() {
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Item</th><th>Type</th><th>Category</th><th>Location</th><th>Date</th><th>Status</th><th>Actions</th></tr>
+          <tr><th>Item</th><th>Type</th><th>Reporter</th><th>Category</th><th>Location</th><th>Date</th><th>Status</th><th>Actions</th></tr>
         </thead>
         <tbody>
           ${filtered.map(r => `
             <tr>
               <td>${esc(r.item_name)}</td>
               <td>${esc(r.report_type)}</td>
+              <td>${r.student_id
+                  ? `<span class="badge badge-approved">Student</span>`
+                  : `<span class="badge badge-pending">Guest</span><br><span class="hint">${esc(r.guest_name || "—")}<br>${esc(r.guest_contact || "")}</span>`}</td>
               <td>${esc(r.category)}</td>
               <td>${esc(r.location)}</td>
               <td>${formatDate(r.item_date)}</td>
